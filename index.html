@@ -1,16 +1,14 @@
+
 <!doctype html>
 <html lang="sv">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0b1020">
-
 <title>Micron15</title>
 
 <style>
-*{
-  box-sizing:border-box;
-}
+*{box-sizing:border-box}
 
 body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -40,29 +38,15 @@ h1{
   margin-bottom:20px;
 }
 
-.status{
-  font-size:14px;
-  opacity:.7;
-  margin-top:8px;
-}
-
 .signal{
   font-size:52px;
   font-weight:800;
   margin:25px 0 5px;
 }
 
-.up{
-  color:#36d17a;
-}
-
-.down{
-  color:#ff5c67;
-}
-
-.neutral{
-  color:#ffd166;
-}
+.up{color:#36d17a}
+.down{color:#ff5c67}
+.neutral{color:#ffd166}
 
 .pct{
   font-size:25px;
@@ -78,12 +62,14 @@ h1{
   border-bottom:1px solid #ffffff18;
 }
 
-.row span{
-  opacity:.75;
-}
+.row span{opacity:.75}
 
-.row b{
-  font-size:17px;
+.row b{font-size:17px}
+
+.status{
+  font-size:14px;
+  opacity:.7;
+  margin-top:15px;
 }
 
 .refresh{
@@ -96,10 +82,6 @@ h1{
   color:white;
   font-size:16px;
   font-weight:600;
-}
-
-.refresh:active{
-  transform:scale(.98);
 }
 
 .small{
@@ -144,8 +126,8 @@ LADDAR
 <b id="time">--</b>
 </div>
 
-<div class="status" id="status">
-Hämtar marknadsdata...
+<div id="status" class="status">
+Hämtar data...
 </div>
 
 <button class="refresh" onclick="loadData()">
@@ -161,76 +143,66 @@ Marknadsdata kan vara fördröjd.
 
 <script>
 
-const signalEl = document.getElementById("signal");
-const pctEl = document.getElementById("pct");
-const priceEl = document.getElementById("price");
-const dirEl = document.getElementById("dir");
-const timeEl = document.getElementById("time");
-const statusEl = document.getElementById("status");
+const API =
+"https://zvhfypnjy8.workers.dev/mu";
 
 
 async function loadData(){
 
-  statusEl.textContent = "Hämtar ny data...";
+  const status =
+    document.getElementById("status");
+
+  status.textContent =
+    "Hämtar ny data...";
 
   try{
 
-    const url =
-      "https://query1.finance.yahoo.com/v8/finance/chart/MU" +
-      "?range=1d&interval=1m&includePrePost=true";
-
-    const response = await fetch(
-      url,
-      {
-        cache:"no-store"
-      }
-    );
+    const response =
+      await fetch(
+        API + "?t=" + Date.now(),
+        {
+          cache:"no-store"
+        }
+      );
 
     if(!response.ok){
-      throw new Error("HTTP "+response.status);
+      throw new Error(
+        "HTTP " + response.status
+      );
     }
 
-    const data = await response.json();
+    const data =
+      await response.json();
 
-    if(
-      !data ||
-      !data.chart ||
-      !data.chart.result ||
-      !data.chart.result[0]
-    ){
-      throw new Error("Ingen marknadsdata");
-    }
-
-    const result = data.chart.result[0];
+    const result =
+      data.chart.result[0];
 
     const closes =
       result.indicators.quote[0].close
       .filter(
-        value =>
-        typeof value === "number" &&
-        Number.isFinite(value)
+        x =>
+        typeof x === "number" &&
+        Number.isFinite(x)
       );
 
     if(closes.length < 16){
-      throw new Error("För lite data");
+      throw new Error(
+        "För lite data"
+      );
     }
 
-    const price = closes[closes.length-1];
+    const price =
+      closes.at(-1);
 
     const oldPrice =
-      closes[closes.length-16];
+      closes.at(-16);
 
     const change =
       ((price-oldPrice)/oldPrice)*100;
 
 
-    /*
-      Enkel 15-minuters momentum-modell.
-      50 = neutral.
-    */
-
     let score =
-      50 + (change * 12);
+      50 + change * 12;
 
     score =
       Math.max(
@@ -243,90 +215,76 @@ async function loadData(){
 
 
     let signal;
-    let className;
+    let cls;
 
     if(score >= 55){
 
       signal = "UPP";
-      className = "up";
+      cls = "up";
 
     }else if(score <= 45){
 
       signal = "NER";
-      className = "down";
+      cls = "down";
 
     }else{
 
       signal = "NEUTRAL";
-      className = "neutral";
-
+      cls = "neutral";
     }
 
 
+    const signalEl =
+      document.getElementById("signal");
+
     signalEl.className =
-      "signal " + className;
+      "signal " + cls;
 
     signalEl.textContent =
       signal;
 
 
-    pctEl.textContent =
+    document.getElementById("pct")
+      .textContent =
       Math.round(score) +
       "% sannolikhet upp";
 
 
-    priceEl.textContent =
-      "$" +
-      price.toFixed(2);
+    document.getElementById("price")
+      .textContent =
+      "$" + price.toFixed(2);
 
 
-    dirEl.textContent =
+    document.getElementById("dir")
+      .textContent =
       (change >= 0 ? "+" : "") +
       change.toFixed(2) +
       "%";
 
 
-    const now =
-      new Date();
-
-    timeEl.textContent =
-      now.toLocaleTimeString(
-        "sv-SE",
-        {
-          hour:"2-digit",
-          minute:"2-digit",
-          second:"2-digit"
-        }
+    document.getElementById("time")
+      .textContent =
+      new Date().toLocaleTimeString(
+        "sv-SE"
       );
 
 
-    statusEl.textContent =
+    status.textContent =
       "✓ Data uppdaterad";
-
 
   }catch(error){
 
     console.error(error);
 
-    statusEl.textContent =
-      "⚠ Kunde inte uppdatera data";
+    status.textContent =
+      "⚠ Kunde inte hämta data";
 
   }
-
 }
 
 
-/*
-  Ladda direkt när sidan öppnas
-*/
-
 loadData();
 
-
-/*
-  Automatisk uppdatering
-  var 30:e sekund
-*/
 
 setInterval(
   loadData,
