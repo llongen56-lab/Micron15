@@ -3,70 +3,110 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1020">
+
 <title>Micron15</title>
 
 <style>
+*{
+  box-sizing:border-box;
+}
+
 body{
-  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   background:#0b1020;
   color:white;
   margin:0;
-  padding:24px;
-  text-align:center
+  padding:18px;
+  text-align:center;
 }
 
 .card{
   max-width:520px;
-  margin:20px auto;
-  padding:28px;
+  margin:10px auto;
+  padding:26px 22px;
   border-radius:24px;
   background:#151c33;
-  box-shadow:0 10px 40px #0006
+  box-shadow:0 10px 40px #0006;
 }
 
 h1{
   font-size:34px;
-  margin:8px
+  margin:5px 0;
 }
 
 .sub{
-  opacity:.7
+  opacity:.7;
+  margin-bottom:20px;
+}
+
+.status{
+  font-size:14px;
+  opacity:.7;
+  margin-top:8px;
 }
 
 .signal{
-  font-size:48px;
+  font-size:52px;
   font-weight:800;
-  margin:28px 0 8px
+  margin:25px 0 5px;
 }
 
 .up{
-  color:#36d17a
+  color:#36d17a;
 }
 
 .down{
-  color:#ff5c67
+  color:#ff5c67;
 }
 
 .neutral{
-  color:#ffd166
+  color:#ffd166;
 }
 
 .pct{
-  font-size:24px;
-  margin-bottom:25px
+  font-size:25px;
+  font-weight:600;
+  margin-bottom:25px;
 }
 
 .row{
   display:flex;
   justify-content:space-between;
-  padding:14px 0;
-  border-bottom:1px solid #ffffff18
+  align-items:center;
+  padding:15px 0;
+  border-bottom:1px solid #ffffff18;
+}
+
+.row span{
+  opacity:.75;
+}
+
+.row b{
+  font-size:17px;
+}
+
+.refresh{
+  margin-top:22px;
+  width:100%;
+  padding:14px;
+  border:0;
+  border-radius:14px;
+  background:#263354;
+  color:white;
+  font-size:16px;
+  font-weight:600;
+}
+
+.refresh:active{
+  transform:scale(.98);
 }
 
 .small{
-  font-size:13px;
-  opacity:.6;
-  margin-top:24px
+  font-size:12px;
+  opacity:.5;
+  margin-top:20px;
+  line-height:1.5;
 }
 </style>
 </head>
@@ -86,7 +126,7 @@ LADDAR
 </div>
 
 <div id="pct" class="pct">
---
+-- %
 </div>
 
 <div class="row">
@@ -95,143 +135,202 @@ LADDAR
 </div>
 
 <div class="row">
-<span>15 min riktning</span>
+<span>15 min förändring</span>
 <b id="dir">--</b>
 </div>
 
 <div class="row">
-<span>Uppdaterad</span>
+<span>Senaste uppdatering</span>
 <b id="time">--</b>
 </div>
 
+<div class="status" id="status">
+Hämtar marknadsdata...
+</div>
+
+<button class="refresh" onclick="loadData()">
+↻ Uppdatera nu
+</button>
+
 <div class="small">
 Indikativ sannolikhetsmodell – inte investeringsråd.<br>
-Data kan vara fördröjd.
+Marknadsdata kan vara fördröjd.
 </div>
 
 </div>
 
 <script>
 
-async function load(){
-
-try{
-
-const r = await fetch(
-'https://query1.finance.yahoo.com/v8/finance/chart/MU?range=1d&interval=1m'
-);
-
-const j = await r.json();
-
-const x = j.chart.result[0];
-
-const c =
-x.indicators.quote[0].close
-.filter(Number.isFinite);
-
-const p = c.at(-1);
-
-const old = c.at(-16);
-
-const ch = ((p-old)/old)*100;
+const signalEl = document.getElementById("signal");
+const pctEl = document.getElementById("pct");
+const priceEl = document.getElementById("price");
+const dirEl = document.getElementById("dir");
+const timeEl = document.getElementById("time");
+const statusEl = document.getElementById("status");
 
 
-/* 15-minuters momentum-modell */
+async function loadData(){
 
-let score =
-50 + Math.max(
--30,
-Math.min(
-30,
-ch*12
-)
-);
+  statusEl.textContent = "Hämtar ny data...";
+
+  try{
+
+    const url =
+      "https://query1.finance.yahoo.com/v8/finance/chart/MU" +
+      "?range=1d&interval=1m&includePrePost=true";
+
+    const response = await fetch(
+      url,
+      {
+        cache:"no-store"
+      }
+    );
+
+    if(!response.ok){
+      throw new Error("HTTP "+response.status);
+    }
+
+    const data = await response.json();
+
+    if(
+      !data ||
+      !data.chart ||
+      !data.chart.result ||
+      !data.chart.result[0]
+    ){
+      throw new Error("Ingen marknadsdata");
+    }
+
+    const result = data.chart.result[0];
+
+    const closes =
+      result.indicators.quote[0].close
+      .filter(
+        value =>
+        typeof value === "number" &&
+        Number.isFinite(value)
+      );
+
+    if(closes.length < 16){
+      throw new Error("För lite data");
+    }
+
+    const price = closes[closes.length-1];
+
+    const oldPrice =
+      closes[closes.length-16];
+
+    const change =
+      ((price-oldPrice)/oldPrice)*100;
 
 
-const signal =
-document.getElementById('signal');
+    /*
+      Enkel 15-minuters momentum-modell.
+      50 = neutral.
+    */
 
-const direction =
-document.getElementById('dir');
+    let score =
+      50 + (change * 12);
+
+    score =
+      Math.max(
+        5,
+        Math.min(
+          95,
+          score
+        )
+      );
 
 
-let cls;
-let txt;
+    let signal;
+    let className;
+
+    if(score >= 55){
+
+      signal = "UPP";
+      className = "up";
+
+    }else if(score <= 45){
+
+      signal = "NER";
+      className = "down";
+
+    }else{
+
+      signal = "NEUTRAL";
+      className = "neutral";
+
+    }
 
 
-if(score > 55){
+    signalEl.className =
+      "signal " + className;
 
-cls='up';
-txt='UPP';
+    signalEl.textContent =
+      signal;
+
+
+    pctEl.textContent =
+      Math.round(score) +
+      "% sannolikhet upp";
+
+
+    priceEl.textContent =
+      "$" +
+      price.toFixed(2);
+
+
+    dirEl.textContent =
+      (change >= 0 ? "+" : "") +
+      change.toFixed(2) +
+      "%";
+
+
+    const now =
+      new Date();
+
+    timeEl.textContent =
+      now.toLocaleTimeString(
+        "sv-SE",
+        {
+          hour:"2-digit",
+          minute:"2-digit",
+          second:"2-digit"
+        }
+      );
+
+
+    statusEl.textContent =
+      "✓ Data uppdaterad";
+
+
+  }catch(error){
+
+    console.error(error);
+
+    statusEl.textContent =
+      "⚠ Kunde inte uppdatera data";
+
+  }
 
 }
 
-else if(score < 45){
 
-cls='down';
-txt='NER';
+/*
+  Ladda direkt när sidan öppnas
+*/
 
-}
-
-else{
-
-cls='neutral';
-txt='NEUTRAL';
-
-}
+loadData();
 
 
-signal.className =
-'signal '+cls;
-
-signal.textContent =
-txt;
-
-
-document.getElementById('pct')
-.textContent =
-Math.round(score)+'% sannolikhet upp';
-
-
-document.getElementById('price')
-.textContent =
-'$'+p.toFixed(2);
-
-
-direction.textContent =
-(ch>=0?'+':'')+
-ch.toFixed(2)+
-'% senaste 15 min';
-
-
-document.getElementById('time')
-.textContent =
-new Date().toLocaleTimeString(
-'sv-SE'
-);
-
-
-}
-
-catch(e){
-
-document.getElementById('signal')
-.textContent='DATAFEL';
-
-document.getElementById('pct')
-.textContent=
-'Försök igen om en stund';
-
-}
-
-}
-
-
-load();
+/*
+  Automatisk uppdatering
+  var 30:e sekund
+*/
 
 setInterval(
-load,
-60000
+  loadData,
+  30000
 );
 
 </script>
